@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import ROOT_DIR, get_settings
 from app.document_checklist import build_checklist, build_missing_documents_email
+from app.mailer import create_email_draft
 from app.tracker import sync_client
 from app.db.models import Client, Document, IngestionJob
 from app.db.session import SessionLocal
@@ -33,7 +34,7 @@ def queue_job(
 ) -> IngestionJob:
     job = IngestionJob(
         source_type=source_type,
-        status="queued",
+        status="received",
         raw_text=raw_text,
         source_ref=source_ref,
     )
@@ -67,6 +68,15 @@ def process_ingestion_job(
             parsed = parse_email_text(job.raw_text)
             payloads.append(parsed["fields"])
             email_attachments = parsed.get("attachments") or []
+            initial_client = _upsert_client(db, parsed["fields"], "received")
+            if initial_client:
+                job.client_id = initial_client.id
+            db.commit()
+        elif extra_fields:
+            initial_client = _upsert_client(db, extra_fields, "received")
+            if initial_client:
+                job.client_id = initial_client.id
+            db.commit()
 
         for file_path in saved_files or []:
             result = _extract_file(file_path)
@@ -94,18 +104,24 @@ def process_ingestion_job(
             checklist,
             validation_results,
         )
+        email_delivery = (
+            create_email_draft(missing_documents_email)
+            if missing_documents_email and get_settings().email_backend.strip().lower()
+            in {"console", "gmail_draft"}
+            else None
+        )
         documents_valid = bool(validation_results) and all(
             result["valid"] for result in validation_results
         )
-        can_store_client = checklist["complete"] and documents_valid
-        client = _upsert_client(db, merged) if can_store_client else None
-        job.client_id = client.id if client else None
-        if not checklist["complete"] and checklist["service"]:
+        if not documents_valid:
+            job_status = "correction_required"
+        elif not checklist["complete"] and checklist["service"]:
             job_status = "docs_pending"
-        elif not documents_valid:
-            job_status = "needs_review"
         else:
             job_status = "ready_for_review"
+        client_status = job_status
+        client = _upsert_client(db, merged, client_status)
+        job.client_id = client.id if client else None
         tracker_status = _tracker_status(job_status, client is not None)
         tracker_sync = sync_client(merged, tracker_status)
         job.extracted_json = json.dumps(
@@ -114,7 +130,7 @@ def process_ingestion_job(
                 "validation": validation_results,
                 "checklist": checklist,
                 "missing_documents_email": missing_documents_email,
-                "email_delivery": None,
+                "email_delivery": email_delivery,
                 "email_approval": (
                     "pending" if missing_documents_email else "not_required"
                 ),
@@ -132,7 +148,7 @@ def process_ingestion_job(
         db.rollback()
         job = db.get(IngestionJob, job_id)
         if job:
-            job.status = "failed"
+            job.status = "processing_failed"
             job.error_message = str(exc)
             job.completed_at = datetime.now(timezone.utc)
             db.commit()
@@ -210,7 +226,9 @@ def _store_document(db: Session, job: IngestionJob, result: dict[str, Any], stor
     return document
 
 
-def _upsert_client(db: Session, fields: dict[str, Any]) -> Client | None:
+def _upsert_client(
+    db: Session, fields: dict[str, Any], status: str
+) -> Client | None:
     if not any(fields.get(key) for key in ("email", "pan", "phone", "name")):
         return None
 
@@ -221,10 +239,10 @@ def _upsert_client(db: Session, fields: dict[str, Any]) -> Client | None:
         client = db.query(Client).filter(Client.pan == fields["pan"]).one_or_none()
 
     if client is None:
-        client = Client(status="ready_for_review")
+        client = Client(status=status)
         db.add(client)
     else:
-        client.status = "ready_for_review"
+        client.status = status
 
     for key in ("name", "pan", "aadhaar", "email", "phone", "service_needed", "gstin"):
         value = fields.get(key)
@@ -238,8 +256,16 @@ def _upsert_client(db: Session, fields: dict[str, Any]) -> Client | None:
 def _tracker_status(job_status: str, client_saved: bool) -> str:
     if job_status == "docs_pending":
         return "docs pending"
-    if job_status in {"needs_review", "ready_for_review"}:
+    if job_status == "correction_required":
+        return "correction required"
+    if job_status in {"processing_failed"}:
+        return "processing failed"
+    if job_status in {"ready_for_review", "under_review"}:
         return "ready for review"
+    if job_status == "approved":
+        return "approved"
+    if job_status == "rejected":
+        return "rejected"
     if job_status == "onboarded":
         return "onboarded"
     return "new"

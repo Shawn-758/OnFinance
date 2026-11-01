@@ -44,15 +44,55 @@ def get_client(client_id: int, db: Session = Depends(get_db)) -> dict:
     }
 
 
-@router.post("/{client_id}/onboard", response_model=ClientResponse)
-def onboard_client(client_id: int, db: Session = Depends(get_db)) -> Client:
+@router.post("/{client_id}/approve", response_model=ClientResponse)
+def approve_client(client_id: int, db: Session = Depends(get_db)) -> Client:
+    client = db.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    if client.status not in {"ready_for_review", "under_review"}:
+        raise HTTPException(
+            status_code=409,
+            detail="Only clients ready for review or under review can be approved",
+        )
+    client.status = "approved"
+    db.commit()
+    db.refresh(client)
+    sync_client(
+        {"name": client.name, "phone": client.phone, "email": client.email},
+        "approved",
+    )
+    return client
+
+
+@router.post("/{client_id}/review", response_model=ClientResponse)
+def start_client_review(client_id: int, db: Session = Depends(get_db)) -> Client:
     client = db.get(Client, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
     if client.status != "ready_for_review":
         raise HTTPException(
             status_code=409,
-            detail="Only clients with status ready_for_review can be onboarded",
+            detail="Only clients ready for review can enter human review",
+        )
+    client.status = "under_review"
+    db.commit()
+    db.refresh(client)
+    sync_client(
+        {"name": client.name, "phone": client.phone, "email": client.email},
+        "under_review",
+    )
+    return client
+
+
+@router.post("/{client_id}/onboard", response_model=ClientResponse)
+def onboard_client(client_id: int, db: Session = Depends(get_db)) -> Client:
+    client = db.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    if client.status != "approved":
+        raise HTTPException(
+            status_code=409,
+            detail="Only approved clients can be onboarded",
         )
     client.status = "onboarded"
     db.commit()
@@ -60,5 +100,25 @@ def onboard_client(client_id: int, db: Session = Depends(get_db)) -> Client:
     sync_client(
         {"name": client.name, "phone": client.phone, "email": client.email},
         "onboarded",
+    )
+    return client
+
+
+@router.post("/{client_id}/reject", response_model=ClientResponse)
+def reject_client(client_id: int, db: Session = Depends(get_db)) -> Client:
+    client = db.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    if client.status not in {"under_review", "approved"}:
+        raise HTTPException(
+            status_code=409,
+            detail="Only clients under review or approved can be rejected",
+        )
+    client.status = "rejected"
+    db.commit()
+    db.refresh(client)
+    sync_client(
+        {"name": client.name, "phone": client.phone, "email": client.email},
+        "rejected",
     )
     return client

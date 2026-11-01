@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from threading import Lock
 from typing import Any
 
 from app.config import get_settings
 
 
 HEADERS = ["Client name", "Phone", "Email", "Status"]
+_SHEET_LOCK = Lock()
 
 
 def sync_client(fields: dict[str, Any], status: str) -> dict[str, str]:
@@ -30,25 +32,26 @@ def sync_client(fields: dict[str, Any], status: str) -> dict[str, str]:
 
     import gspread
 
-    client = gspread.service_account(filename=settings.google_service_account_file)
-    sheet = client.open_by_key(settings.google_sheet_id).worksheet(settings.google_worksheet)
-    values = sheet.get_all_values()
-    if not values:
-        sheet.append_row(HEADERS)
-        values = [HEADERS]
-    if values[0] != HEADERS:
-        raise ValueError(f"Tracker sheet headers must be exactly: {HEADERS}")
+    with _SHEET_LOCK:
+        client = gspread.service_account(filename=settings.google_service_account_file)
+        sheet = client.open_by_key(settings.google_sheet_id).worksheet(settings.google_worksheet)
+        values = sheet.get_all_values()
+        if not values:
+            sheet.append_row(HEADERS)
+            values = [HEADERS]
+        if values[0] != HEADERS:
+            raise ValueError(f"Tracker sheet headers must be exactly: {HEADERS}")
 
-    email = str(fields.get("email") or "").strip().lower()
-    row_values = [
-        fields.get("name") or "",
-        fields.get("phone") or "",
-        email,
-        status,
-    ]
-    for row_number, row in enumerate(values[1:], start=2):
-        if email and len(row) >= 3 and row[2].strip().lower() == email:
-            sheet.update(f"A{row_number}:D{row_number}", [row_values])
-            return {"status": "synced", "backend": "gspread"}
-    sheet.append_row(row_values)
+        email = str(fields.get("email") or "").strip().lower()
+        row_values = [
+            fields.get("name") or "",
+            fields.get("phone") or "",
+            email,
+            status,
+        ]
+        for row_number, row in enumerate(values[1:], start=2):
+            if email and len(row) >= 3 and row[2].strip().lower() == email:
+                sheet.update(f"A{row_number}:D{row_number}", [row_values])
+                return {"status": "synced", "backend": "gspread"}
+        sheet.append_row(row_values)
     return {"status": "synced", "backend": "gspread"}

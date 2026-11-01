@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any
 
 import cv2
-import numpy as np
 import pytesseract
 from PIL import Image
 
