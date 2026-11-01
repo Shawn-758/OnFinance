@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 
-AADHAAR_DIGITS_RE = re.compile(r"^[2-9][0-9]{11}$")
+AADHAAR_DIGITS_RE = re.compile(r"^[1-9][0-9]{11}$")
 PAN_RE = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
 GSTIN_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$")
 DATE_RE = re.compile(r"^(0?[1-9]|[12][0-9]|3[01])[-/](0?[1-9]|1[0-2])[-/][0-9]{4}$")
@@ -59,7 +59,7 @@ def validate_aadhaar(value: str | None) -> dict[str, Any]:
     digits = _digits(value)
     errors: list[str] = []
     if not AADHAAR_DIGITS_RE.fullmatch(digits):
-        errors.append("Aadhaar must contain 12 digits and start with 2-9")
+        errors.append("Aadhaar must contain 12 digits and start with 1-9")
     elif not _verhoeff_valid(digits):
         errors.append("Aadhaar failed the Verhoeff checksum")
     return _result("aadhaar", errors, [])

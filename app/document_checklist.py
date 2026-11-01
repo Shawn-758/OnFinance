@@ -35,11 +35,25 @@ def build_checklist(
 ) -> dict[str, Any]:
     normalized_service = normalize_service(service)
     required = list(SERVICE_CHECKLISTS.get(normalized_service or "", ()))
+    unusable = sorted(
+        {
+            document_type
+            for document in documents
+            if (document_type := document.get("document_type")) in required
+            and (
+                document.get("quality_flag") in {"low_quality", "unreadable"}
+                or not (document.get("text") or "").strip()
+            )
+        }
+    )
     present = sorted(
         {
             document_type
             for document in documents
             if (document_type := document.get("document_type")) in required
+            and document_type not in unusable
+            and document.get("quality_flag", "ok") == "ok"
+            and (document.get("text") or "").strip()
         }
     )
     missing = [document_type for document_type in required if document_type not in present]
@@ -48,18 +62,37 @@ def build_checklist(
         "required_documents": required,
         "present_documents": present,
         "missing_documents": missing,
+        "unusable_documents": unusable,
         "complete": bool(normalized_service) and not missing,
     }
 
 
 def build_missing_documents_email(
-    recipient: str | None, client_name: str | None, checklist: dict[str, Any]
+    recipient: str | None,
+    client_name: str | None,
+    checklist: dict[str, Any],
+    validation_results: list[dict[str, Any]] | None = None,
 ) -> dict[str, str] | None:
     missing = checklist.get("missing_documents", [])
-    if not recipient or not missing:
+    invalid_documents = [
+        result
+        for result in validation_results or []
+        if not result.get("valid")
+    ]
+    if not recipient or (not missing and not invalid_documents):
         return None
-    labels = [DOCUMENT_LABELS.get(item, item.replace("_", " ")) for item in missing]
-    document_list = "\n".join(f"- {label}" for label in labels)
+    lines: list[str] = []
+    for item in missing:
+        label = DOCUMENT_LABELS.get(item, item.replace("_", " "))
+        lines.append(f"- {label}: required document was not received")
+    for result in invalid_documents:
+        label = DOCUMENT_LABELS.get(
+            result.get("document_type", ""),
+            result.get("document_type", "document").replace("_", " "),
+        )
+        reasons = "; ".join(result.get("errors", [])) or "document validation failed"
+        lines.append(f"- {label}: please resubmit a valid copy ({reasons})")
+    document_list = "\n".join(lines)
     greeting_name = client_name or "Client"
     service = checklist.get("service") or "requested service"
     return {
@@ -68,8 +101,8 @@ def build_missing_documents_email(
         "body": (
             f"Dear {greeting_name},\n\n"
             f"Thank you for contacting us regarding {service}. "
-            "To continue processing your request, please submit the following "
-            "document(s):\n\n"
+            "To continue processing your request, please provide or resubmit "
+            "the following document(s):\n\n"
             f"{document_list}\n\n"
             "Please reply to this email with clear, legible copies of the "
             "required documents. Once received, we will validate them and "

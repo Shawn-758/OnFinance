@@ -10,8 +10,9 @@ HEADER_RE = re.compile(
     r"^(Email\s+\d+[^\n|]*?)\s*\|\s*From:\s*([^|]+?)\s*\|\s*Attachments:\s*(.+)$",
     re.IGNORECASE,
 )
-FROM_RE = re.compile(r"^From:\s*(.+)$", re.IGNORECASE | re.MULTILINE)
+FROM_RE = re.compile(r"^From:\s*([^|\n]+)", re.IGNORECASE | re.MULTILINE)
 ATTACH_RE = re.compile(r"^Attachments?:\s*(.+)$", re.IGNORECASE | re.MULTILINE)
+INLINE_ATTACH_RE = re.compile(r"\|\s*Attachments?:\s*([^|\n]+)", re.IGNORECASE)
 
 
 def split_sample_emails(blob: str) -> list[str]:
@@ -42,6 +43,14 @@ def parse_email_text(raw: str) -> dict[str, Any]:
             attachments = [
                 item.strip() for item in attach_match.group(1).split(",") if item.strip()
             ]
+        else:
+            inline_attach_match = INLINE_ATTACH_RE.search(raw)
+            if inline_attach_match:
+                attachments = [
+                    item.strip()
+                    for item in inline_attach_match.group(1).split(",")
+                    if item.strip()
+                ]
 
     fields = extract_fields(raw)
     if from_addr and not fields.get("email"):

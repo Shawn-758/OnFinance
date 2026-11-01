@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import ROOT_DIR, get_settings
 from app.document_checklist import build_checklist, build_missing_documents_email
+from app.tracker import sync_client
 from app.db.models import Client, Document, IngestionJob
 from app.db.session import SessionLocal
 from app.extractors.email_parser import parse_email_text, split_sample_emails
@@ -88,7 +89,10 @@ def process_ingestion_job(
         validation_results = _validate_documents(document_results, merged)
         checklist = build_checklist(merged.get("service_needed"), document_results)
         missing_documents_email = build_missing_documents_email(
-            merged.get("email"), merged.get("name"), checklist
+            merged.get("email"),
+            merged.get("name"),
+            checklist,
+            validation_results,
         )
         documents_valid = bool(validation_results) and all(
             result["valid"] for result in validation_results
@@ -101,13 +105,20 @@ def process_ingestion_job(
         elif not documents_valid:
             job_status = "needs_review"
         else:
-            job_status = "completed"
+            job_status = "ready_for_review"
+        tracker_status = _tracker_status(job_status, client is not None)
+        tracker_sync = sync_client(merged, tracker_status)
         job.extracted_json = json.dumps(
             {
                 "fields": merged,
                 "validation": validation_results,
                 "checklist": checklist,
                 "missing_documents_email": missing_documents_email,
+                "email_delivery": None,
+                "email_approval": (
+                    "pending" if missing_documents_email else "not_required"
+                ),
+                "tracker_sync": tracker_sync,
             },
             default=str,
         )
@@ -210,8 +221,10 @@ def _upsert_client(db: Session, fields: dict[str, Any]) -> Client | None:
         client = db.query(Client).filter(Client.pan == fields["pan"]).one_or_none()
 
     if client is None:
-        client = Client(status="new")
+        client = Client(status="ready_for_review")
         db.add(client)
+    else:
+        client.status = "ready_for_review"
 
     for key in ("name", "pan", "aadhaar", "email", "phone", "service_needed", "gstin"):
         value = fields.get(key)
@@ -220,3 +233,13 @@ def _upsert_client(db: Session, fields: dict[str, Any]) -> Client | None:
 
     db.flush()
     return client
+
+
+def _tracker_status(job_status: str, client_saved: bool) -> str:
+    if job_status == "docs_pending":
+        return "docs pending"
+    if job_status in {"needs_review", "ready_for_review"}:
+        return "ready for review"
+    if job_status == "onboarded":
+        return "onboarded"
+    return "new"

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.db.models import Client, Document
 from app.db.session import get_db
 from app.schemas.ingest import ClientResponse
+from app.tracker import sync_client
 
 
 router = APIRouter(prefix="/clients", tags=["clients"])
@@ -41,3 +42,23 @@ def get_client(client_id: int, db: Session = Depends(get_db)) -> dict:
             for doc in documents
         ],
     }
+
+
+@router.post("/{client_id}/onboard", response_model=ClientResponse)
+def onboard_client(client_id: int, db: Session = Depends(get_db)) -> Client:
+    client = db.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    if client.status != "ready_for_review":
+        raise HTTPException(
+            status_code=409,
+            detail="Only clients with status ready_for_review can be onboarded",
+        )
+    client.status = "onboarded"
+    db.commit()
+    db.refresh(client)
+    sync_client(
+        {"name": client.name, "phone": client.phone, "email": client.email},
+        "onboarded",
+    )
+    return client
