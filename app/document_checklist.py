@@ -72,6 +72,7 @@ def build_missing_documents_email(
     client_name: str | None,
     checklist: dict[str, Any],
     validation_results: list[dict[str, Any]] | None = None,
+    documents: list[dict[str, Any]] | None = None,
 ) -> dict[str, str] | None:
     missing = checklist.get("missing_documents", [])
     invalid_documents = [
@@ -79,7 +80,13 @@ def build_missing_documents_email(
         for result in validation_results or []
         if not result.get("valid")
     ]
-    if not recipient or (not missing and not invalid_documents):
+    unusable_documents = [
+        document
+        for document in documents or []
+        if document.get("quality_flag") in {"low_quality", "unreadable"}
+        or not (document.get("text") or "").strip()
+    ]
+    if not recipient or (not missing and not invalid_documents and not unusable_documents):
         return None
     lines: list[str] = []
     for item in missing:
@@ -92,6 +99,19 @@ def build_missing_documents_email(
         )
         reasons = "; ".join(result.get("errors", [])) or "document validation failed"
         lines.append(f"- {label}: please resubmit a valid copy ({reasons})")
+    for document in unusable_documents:
+        document_type = document.get("document_type") or "document"
+        label = DOCUMENT_LABELS.get(
+            document_type,
+            document_type.replace("_", " "),
+        )
+        quality = document.get("quality_flag")
+        reason = (
+            "image appears blurry or low quality"
+            if quality == "low_quality"
+            else "document could not be read"
+        )
+        lines.append(f"- {label}: please resubmit a clear, legible copy ({reason})")
     document_list = "\n".join(lines)
     greeting_name = client_name or "Client"
     service = checklist.get("service") or "requested service"

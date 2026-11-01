@@ -103,6 +103,7 @@ def process_ingestion_job(
             merged.get("name"),
             checklist,
             validation_results,
+            document_results,
         )
         email_delivery = (
             create_email_draft(missing_documents_email)
@@ -110,12 +111,21 @@ def process_ingestion_job(
             in {"console", "gmail_draft"}
             else None
         )
-        documents_valid = bool(validation_results) and all(
-            result["valid"] for result in validation_results
+        invalid_documents = [
+            result for result in validation_results if not result["valid"]
+        ]
+        documents_valid = bool(validation_results) and not invalid_documents
+        has_unusable_documents = bool(checklist["unusable_documents"]) or any(
+            document.get("quality_flag") in {"low_quality", "unreadable"}
+            or not (document.get("text") or "").strip()
+            for document in document_results
         )
-        if not documents_valid:
+        if invalid_documents:
             job_status = "correction_required"
-        elif not checklist["complete"] and checklist["service"]:
+        elif (
+            has_unusable_documents
+            or (not checklist["complete"] and checklist["service"])
+        ):
             job_status = "docs_pending"
         else:
             job_status = "ready_for_review"
