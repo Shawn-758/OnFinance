@@ -89,6 +89,16 @@ while documents are pending or being corrected.
 
 DB handles duplicate records or follow up emails by cross checking email&&pan number if exists.
 
+## Duplicate Handling
+
+- When a new email is received, the system extracts the client’s email address and PAN. 
+
+- Before creating a new client, it checks whether a record already exists using the email as the primary identifier and PAN as a secondary identifier.
+
+- If a matching client is found, the existing client record is updated rather than creating a duplicate. 
+
+- This allows multiple emails or document submissions from the same client to remain linked to one client record while each ingestion event is still tracked separately as an individual job
+
 
 ## Document Checklist: 
 ITR: PAN and Aadhaar; 
@@ -157,6 +167,14 @@ Aadhaar: invalid
 result : correction_required
 
 The email notifies the client to resubmit a valid Aadhaar.
+
+## Human Approval and Status Transition
+
+- After the system receives an email, it extracts the client details and validates the documents automatically. It can identify missing, invalid, blurry, or unreadable documents, but it does not automatically send client-facing emails or onboard the client.
+
+- If a document is missing, the application is placed in docs_pending. If a submitted document is invalid, it is placed in correction_required. If automation fails, it is placed in processing_failed. When all required documents pass validation, the application moves to ready_for_review.
+
+- A staff member can then move the application to under_review, approve it, and finally onboard the client
 
 
 ## Tracker 
