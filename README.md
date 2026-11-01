@@ -55,6 +55,32 @@ invalid documents -> correction_required
 automation error -> processing_failed
 ```
 
+
+## Input data and demo intake
+
+The prototype accepts an email body and attachment filenames through
+`POST /ingest/email`, or uploaded files through `POST /ingest/documents`.
+For demo purposes, the supplied email and document data is run through the
+manual script:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\submit_email_fixture.py
+```
+
+The script reads the provided `email.txt` fixture and submits all sample
+messages to the API. 
+
+This keeps the demonstration deterministic and avoids unnecessary inbox, webhook, and mailbox-permission configuration for the demo.
+
+
+Gmail inbox reading is already supported by the project dependencies and OAuth
+design, but it is intentionally not enabled in the demo path. The current
+application does not monitor the inbox continuously; the provided email and
+attachment samples are used as the input instead. This is a deliberate
+simplification for the prototype, not a limitation of the extraction,
+validation, database, tracker, or Gmail-draft workflow.
+
+
 ## Client Record:
 Name, PAN, email, phone, and service are saved, even when the checklist is incomplete.
 
