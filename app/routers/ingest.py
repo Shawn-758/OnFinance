@@ -95,6 +95,14 @@ def approve_email(job_id: int, db: Session = Depends(get_db)) -> dict[str, objec
         raise HTTPException(status_code=400, detail="No email draft requires approval")
     if payload.get("email_approval") == "approved":
         raise HTTPException(status_code=409, detail="Email already approved")
+    email_delivery = payload.get("email_delivery") or {}
+    if email_delivery.get("backend") == "gmail_draft":
+        return {
+            "job_id": job.id,
+            "email_approval": "manual_in_gmail",
+            "delivery": email_delivery,
+            "message": "Draft created in Gmail. Review and send it manually from Gmail.",
+        }
 
     delivery = send_email(email)
     if delivery.get("status") not in {"sent", "simulated"}:

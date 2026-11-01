@@ -10,7 +10,7 @@ settings = get_settings()
 
 connect_args = {}
 if settings.sqlalchemy_url.startswith("sqlite"):
-    connect_args = {"check_same_thread": False}
+    connect_args = {"check_same_thread": False, "timeout": 50}
 
 engine = create_engine(
     settings.sqlalchemy_url,

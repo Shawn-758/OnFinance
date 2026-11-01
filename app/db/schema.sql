@@ -1,7 +1,7 @@
-CREATE DATABASE IF NOT EXISTS `adams_onboarding`
+CREATE DATABASE IF NOT EXISTS `onFinance`
   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-USE `adams_onboarding`;
+USE `onFinance`;
 
 CREATE TABLE IF NOT EXISTS clients (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS clients (
   phone VARCHAR(20) NULL,
   service_needed VARCHAR(50) NULL,
   gstin VARCHAR(20) NULL,
-  status VARCHAR(40) NOT NULL DEFAULT 'new',
+  status VARCHAR(40) NOT NULL DEFAULT 'received',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX ix_clients_pan (pan),
@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS clients (
 CREATE TABLE IF NOT EXISTS ingestion_jobs (
   id INT AUTO_INCREMENT PRIMARY KEY,
   source_type VARCHAR(40) NOT NULL,
-  status VARCHAR(40) NOT NULL DEFAULT 'queued',
+  status VARCHAR(40) NOT NULL DEFAULT 'received',
   source_ref VARCHAR(255) NULL,
   raw_text TEXT NULL,
   extracted_json TEXT NULL,

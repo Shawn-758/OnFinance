@@ -19,7 +19,7 @@ class Client(Base):
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     service_needed: Mapped[str | None] = mapped_column(String(50), nullable=True)
     gstin: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    status: Mapped[str] = mapped_column(String(40), nullable=False, default="new")
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="received")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
@@ -34,7 +34,7 @@ class IngestionJob(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     source_type: Mapped[str] = mapped_column(String(40), nullable=False)
-    status: Mapped[str] = mapped_column(String(40), nullable=False, default="queued")
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="received")
     source_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
     raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     extracted_json: Mapped[str | None] = mapped_column(Text, nullable=True)
